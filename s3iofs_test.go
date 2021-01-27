@@ -38,7 +38,6 @@ func TestS3FS_Stat(t *testing.T) {
 				name:   ".",
 				bucket: "test",
 				mode:   fs.ModeDir,
-				isDir:  true,
 			},
 		},
 	}
