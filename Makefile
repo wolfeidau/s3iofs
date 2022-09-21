@@ -1,4 +1,4 @@
-GOLANGCI_VERSION = 1.31.0
+GOLANGCI_VERSION = 1.49.0
 
 # This path is used to cache binaries used for development and can be overridden to avoid issues with osx vs linux
 # binaries.
@@ -10,7 +10,7 @@ ci: lint test
 $(BIN_DIR)/golangci-lint: $(BIN_DIR)/golangci-lint-${GOLANGCI_VERSION}
 	@ln -sf golangci-lint-${GOLANGCI_VERSION} $(BIN_DIR)/golangci-lint
 $(BIN_DIR)/golangci-lint-${GOLANGCI_VERSION}:
-	@curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | BINARY=golangci-lint bash -s -- v${GOLANGCI_VERSION}
+	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v$(GOLANGCI_VERSION)
 	@mv $(BIN_DIR)/golangci-lint $@
 
 $(BIN_DIR)/mockgen:
