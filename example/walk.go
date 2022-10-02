@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/rs/zerolog/log"
 	"github.com/wolfeidau/s3iofs"
 )
@@ -18,9 +19,11 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to load aws config")
 	}
 
-	s3fs := s3iofs.New(os.Getenv("TEST_BUCKET_NAME"), awscfg)
+	client := s3.NewFromConfig(awscfg)
 
-	err = fs.WalkDir(s3fs, ".", func(path string, d fs.DirEntry, err error) error {
+	s3fs := s3iofs.NewWithClient(os.Getenv("TEST_BUCKET_NAME"), client)
+
+	err = fs.WalkDir(s3fs, "parquet", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -30,6 +33,7 @@ func main() {
 			return nil
 		}
 		fmt.Println("file:", path)
+
 		return nil
 	})
 	if err != nil {
