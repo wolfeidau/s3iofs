@@ -13,13 +13,9 @@ $(BIN_DIR)/golangci-lint-${GOLANGCI_VERSION}:
 	@curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v$(GOLANGCI_VERSION)
 	@mv $(BIN_DIR)/golangci-lint $@
 
-$(BIN_DIR)/mockgen:
-	@go get -u github.com/golang/mock/mockgen
-	@env GOBIN=$(BIN_DIR) GO111MODULE=on go install github.com/golang/mock/mockgen
-
-mocks: $(BIN_DIR)/mockgen
+mocks:
 	@echo "--- build all the mocks"
-	@bin/mockgen -destination=mocks/s3api.go -package=mocks github.com/wolfeidau/s3iofs S3API
+	@go run github.com/golang/mock/mockgen -destination=mocks/s3api.go -package=mocks github.com/wolfeidau/s3iofs S3API
 .PHONY: mocks
 
 lint: $(BIN_DIR)/golangci-lint

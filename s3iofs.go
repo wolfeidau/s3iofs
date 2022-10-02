@@ -35,6 +35,14 @@ func New(bucket string, awscfg aws.Config) *S3FS {
 	}
 }
 
+// NewWithClient returns a new filesystem which provides access to the specified s3 bucket.
+func NewWithClient(bucket string, client S3API) *S3FS {
+	return &S3FS{
+		s3client: client,
+		bucket:   bucket,
+	}
+}
+
 // Open opens the named file.
 func (s3fs *S3FS) Open(name string) (fs.File, error) {
 
@@ -44,6 +52,7 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 
 	if name == "." {
 		return &s3File{
+			s3fs:   s3fs,
 			name:   name,
 			bucket: s3fs.bucket,
 			mode:   fs.ModeDir,
@@ -51,7 +60,7 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 	}
 
 	// optimistic GetObject using name
-	res, err := s3fs.s3client.GetObject(context.TODO(), &s3.GetObjectInput{
+	res, err := s3fs.s3client.HeadObject(context.TODO(), &s3.HeadObjectInput{
 		Bucket: aws.String(s3fs.bucket),
 		Key:    aws.String(name),
 	})
@@ -64,7 +73,10 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 		return nil, err
 	}
 
+	// fmt.Println("res.ContentLength", res.ContentLength)
+
 	return &s3File{
+		s3fs:    s3fs,
 		name:    name,
 		bucket:  s3fs.bucket,
 		res:     res,
@@ -96,7 +108,7 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 
 	if !f.IsDir() {
-		return nil, &fs.PathError{Op: "read", Path: name, Err: fs.ErrNotExist}
+		return nil, &fs.PathError{Op: opRead, Path: name, Err: fs.ErrNotExist}
 	}
 
 	prefix := name + "/"
@@ -123,8 +135,6 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 		dir := path.Base(prefix)
 
-		// log.Info().Str("dir", dir).Msg("commonPrefix")
-
 		entries = append(entries, &s3File{
 			name:   dir,
 			bucket: s3fs.bucket,
@@ -142,10 +152,6 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 			modTime: aws.ToTime(obj.LastModified),
 		})
 	}
-
-	// log.Info().Fields(map[string]interface{}{
-	// 	"entries": entries,
-	// }).Msg("ReadDir")
 
 	return entries, nil
 }

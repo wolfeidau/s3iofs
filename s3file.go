@@ -1,25 +1,38 @@
 package s3iofs
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 var (
 	_ fs.FileInfo = (*s3File)(nil)
 	_ fs.DirEntry = (*s3File)(nil)
+	_ io.ReaderAt = (*s3File)(nil)
+	_ io.Seeker   = (*s3File)(nil)
+)
+
+const (
+	opRead = "read"
+	opSeek = "seek"
 )
 
 type s3File struct {
+	s3fs    *S3FS
 	name    string
 	bucket  string
-	res     *s3.GetObjectOutput
+	res     *s3.HeadObjectOutput
 	size    int64
 	mode    fs.FileMode
 	modTime time.Time // zero value for directories
+	offset  int64
 }
 
 func (s3f *s3File) Stat() (fs.FileInfo, error) {
@@ -32,16 +45,99 @@ func (s3f *s3File) Info() (fs.FileInfo, error) {
 
 func (s3f *s3File) Read(p []byte) (int, error) {
 	if s3f.IsDir() {
-		return 0, &fs.PathError{Op: "read", Path: s3f.name, Err: errors.New("is a directory")}
+		return 0, &fs.PathError{Op: opRead, Path: s3f.name, Err: errors.New("is a directory")}
 	}
-	return s3f.res.Body.Read(p)
+
+	// fmt.Println("offset", s3f.offset, "size", s3f.size)
+
+	if s3f.offset >= s3f.size {
+		return 0, io.EOF
+	}
+
+	ctx := context.Background()
+
+	r, err := s3f.readerAt(ctx, s3f.offset, int64(len(p)))
+	if err != nil {
+		return 0, err
+	}
+
+	size, err := r.Read(p)
+	s3f.offset += int64(size)
+	if err != nil {
+		if err != io.EOF {
+			return size, err
+		}
+		// check if we are at the end of the underlying file
+		if s3f.offset > s3f.size {
+			return size, err
+		}
+	}
+
+	return size, r.Close()
+}
+
+func (s3f *s3File) ReadAt(p []byte, offset int64) (n int, err error) {
+	ctx := context.Background()
+
+	r, err := s3f.readerAt(ctx, offset, int64(len(p)))
+	if err != nil {
+		return 0, err
+	}
+
+	size, err := r.Read(p)
+	if err != nil {
+		if err != io.EOF {
+			return size, err
+		}
+		// check if we are at the end of the underlying file
+		if offset+int64(size) > s3f.size {
+			return size, err
+		}
+	}
+
+	fmt.Println("size", s3f.size)
+
+	return size, r.Close()
+}
+
+func (s3f *s3File) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	default:
+		return 0, &fs.PathError{Op: opSeek, Path: s3f.name, Err: fs.ErrInvalid}
+	case io.SeekStart:
+		// offset += 0
+	case io.SeekCurrent:
+		offset += s3f.offset
+	case io.SeekEnd:
+		offset += s3f.size
+	}
+	if offset < 0 || offset > s3f.size {
+		return 0, &fs.PathError{Op: opSeek, Path: s3f.name, Err: fs.ErrInvalid}
+	}
+	s3f.offset = offset
+
+	return offset, nil
+}
+
+func (s3f *s3File) readerAt(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
+	byteRange := buildRange(offset, length)
+
+	res, err := s3f.s3fs.s3client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s3f.bucket),
+		Key:    aws.String(s3f.name),
+		Range:  byteRange,
+	})
+	if err != nil {
+		return nil, &fs.PathError{Op: opRead, Path: s3f.name, Err: err}
+	}
+
+	// fmt.Println("offset", aws.ToString(byteRange), "content-length", res.ContentLength)
+
+	return res.Body, nil
 }
 
 func (s3f *s3File) Close() error {
-	if s3f.IsDir() {
-		return nil // NOOP for directories
-	}
-	return s3f.res.Body.Close()
+	return nil
 }
 
 // Name returns the name of the file (or subdirectory) described by the entry.
@@ -77,4 +173,19 @@ func (s3f *s3File) IsDir() bool {
 // underlying data source (can return nil)
 func (s3f *s3File) Sys() interface{} {
 	return nil
+}
+
+func buildRange(offset, length int64) *string {
+	var byteRange *string
+	if offset > 0 && length < 0 {
+		byteRange = aws.String(fmt.Sprintf("bytes=%d-", offset))
+	} else if length == 0 {
+		// AWS doesn't support a zero-length read; we'll read 1 byte and then
+		// ignore it in favor of http.NoBody below.
+		byteRange = aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset))
+	} else if length >= 0 {
+		byteRange = aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
+	}
+
+	return byteRange
 }

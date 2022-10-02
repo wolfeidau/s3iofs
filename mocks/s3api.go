@@ -6,35 +6,36 @@ package mocks
 
 import (
 	context "context"
+	reflect "reflect"
+
 	s3 "github.com/aws/aws-sdk-go-v2/service/s3"
 	gomock "github.com/golang/mock/gomock"
-	reflect "reflect"
 )
 
-// MockS3API is a mock of S3API interface
+// MockS3API is a mock of S3API interface.
 type MockS3API struct {
 	ctrl     *gomock.Controller
 	recorder *MockS3APIMockRecorder
 }
 
-// MockS3APIMockRecorder is the mock recorder for MockS3API
+// MockS3APIMockRecorder is the mock recorder for MockS3API.
 type MockS3APIMockRecorder struct {
 	mock *MockS3API
 }
 
-// NewMockS3API creates a new mock instance
+// NewMockS3API creates a new mock instance.
 func NewMockS3API(ctrl *gomock.Controller) *MockS3API {
 	mock := &MockS3API{ctrl: ctrl}
 	mock.recorder = &MockS3APIMockRecorder{mock}
 	return mock
 }
 
-// EXPECT returns an object that allows the caller to indicate expected use
+// EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockS3API) EXPECT() *MockS3APIMockRecorder {
 	return m.recorder
 }
 
-// GetObject mocks base method
+// GetObject mocks base method.
 func (m *MockS3API) GetObject(arg0 context.Context, arg1 *s3.GetObjectInput, arg2 ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{arg0, arg1}
@@ -47,14 +48,34 @@ func (m *MockS3API) GetObject(arg0 context.Context, arg1 *s3.GetObjectInput, arg
 	return ret0, ret1
 }
 
-// GetObject indicates an expected call of GetObject
+// GetObject indicates an expected call of GetObject.
 func (mr *MockS3APIMockRecorder) GetObject(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{arg0, arg1}, arg2...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObject", reflect.TypeOf((*MockS3API)(nil).GetObject), varargs...)
 }
 
-// ListObjectsV2 mocks base method
+// HeadObject mocks base method.
+func (m *MockS3API) HeadObject(arg0 context.Context, arg1 *s3.HeadObjectInput, arg2 ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "HeadObject", varargs...)
+	ret0, _ := ret[0].(*s3.HeadObjectOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HeadObject indicates an expected call of HeadObject.
+func (mr *MockS3APIMockRecorder) HeadObject(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeadObject", reflect.TypeOf((*MockS3API)(nil).HeadObject), varargs...)
+}
+
+// ListObjectsV2 mocks base method.
 func (m *MockS3API) ListObjectsV2(arg0 context.Context, arg1 *s3.ListObjectsV2Input, arg2 ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
 	m.ctrl.T.Helper()
 	varargs := []interface{}{arg0, arg1}
@@ -67,7 +88,7 @@ func (m *MockS3API) ListObjectsV2(arg0 context.Context, arg1 *s3.ListObjectsV2In
 	return ret0, ret1
 }
 
-// ListObjectsV2 indicates an expected call of ListObjectsV2
+// ListObjectsV2 indicates an expected call of ListObjectsV2.
 func (mr *MockS3APIMockRecorder) ListObjectsV2(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]interface{}{arg0, arg1}, arg2...)
