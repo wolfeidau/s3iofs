@@ -1,4 +1,4 @@
-GOLANGCI_VERSION = 1.49.0
+GOLANGCI_VERSION = 1.50.1
 
 # This path is used to cache binaries used for development and can be overridden to avoid issues with osx vs linux
 # binaries.
