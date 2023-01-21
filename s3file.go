@@ -84,7 +84,9 @@ func (s3f *s3File) ReadAt(p []byte, offset int64) (n int, err error) {
 		return 0, err
 	}
 
-	size, err := r.Read(p)
+	// ensure the buffer is read, or EOF is reached for this read of this "chunk"
+	// given we are using offsets to read this block it is constrained by size of `p`
+	size, err := io.ReadFull(r, p)
 	if err != nil {
 		if err != io.EOF {
 			return size, err
