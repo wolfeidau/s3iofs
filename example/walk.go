@@ -23,7 +23,7 @@ func main() {
 
 	s3fs := s3iofs.NewWithClient(os.Getenv("TEST_BUCKET_NAME"), client)
 
-	err = fs.WalkDir(s3fs, "parquet", func(path string, d fs.DirEntry, err error) error {
+	err = fs.WalkDir(s3fs, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

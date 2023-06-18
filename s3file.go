@@ -25,14 +25,13 @@ const (
 )
 
 type s3File struct {
-	s3fs    *S3FS
-	name    string
-	bucket  string
-	res     *s3.HeadObjectOutput
-	size    int64
-	mode    fs.FileMode
-	modTime time.Time // zero value for directories
-	offset  int64
+	s3client S3API
+	name     string
+	bucket   string
+	size     int64
+	mode     fs.FileMode
+	modTime  time.Time // zero value for directories
+	offset   int64
 }
 
 func (s3f *s3File) Stat() (fs.FileInfo, error) {
@@ -47,8 +46,6 @@ func (s3f *s3File) Read(p []byte) (int, error) {
 	if s3f.IsDir() {
 		return 0, &fs.PathError{Op: opRead, Path: s3f.name, Err: errors.New("is a directory")}
 	}
-
-	// fmt.Println("offset", s3f.offset, "size", s3f.size)
 
 	if s3f.offset >= s3f.size {
 		return 0, io.EOF
@@ -97,7 +94,7 @@ func (s3f *s3File) ReadAt(p []byte, offset int64) (n int, err error) {
 		}
 	}
 
-	fmt.Println("size", s3f.size)
+	// fmt.Println("offset", offset, "size", s3f.size)
 
 	return size, r.Close()
 }
@@ -124,16 +121,16 @@ func (s3f *s3File) Seek(offset int64, whence int) (int64, error) {
 func (s3f *s3File) readerAt(ctx context.Context, offset, length int64) (io.ReadCloser, error) {
 	byteRange := buildRange(offset, length)
 
-	res, err := s3f.s3fs.s3client.GetObject(ctx, &s3.GetObjectInput{
+	req := &s3.GetObjectInput{
 		Bucket: aws.String(s3f.bucket),
 		Key:    aws.String(s3f.name),
 		Range:  byteRange,
-	})
+	}
+
+	res, err := s3f.s3client.GetObject(ctx, req)
 	if err != nil {
 		return nil, &fs.PathError{Op: opRead, Path: s3f.name, Err: err}
 	}
-
-	// fmt.Println("offset", aws.ToString(byteRange), "content-length", res.ContentLength)
 
 	return res.Body, nil
 }
