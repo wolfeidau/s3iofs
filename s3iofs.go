@@ -52,18 +52,20 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 
 	if name == "." {
 		return &s3File{
-			s3fs:   s3fs,
-			name:   name,
-			bucket: s3fs.bucket,
-			mode:   fs.ModeDir,
+			s3client: s3fs.s3client,
+			name:     name,
+			bucket:   s3fs.bucket,
+			mode:     fs.ModeDir,
 		}, nil
 	}
 
-	// optimistic GetObject using name
-	res, err := s3fs.s3client.HeadObject(context.TODO(), &s3.HeadObjectInput{
+	req := &s3.HeadObjectInput{
 		Bucket: aws.String(s3fs.bucket),
 		Key:    aws.String(name),
-	})
+	}
+
+	// optimistic GetObject using name
+	res, err := s3fs.s3client.HeadObject(context.TODO(), req)
 	if err != nil {
 		var nfe *types.NotFound
 		if errors.As(err, &nfe) {
@@ -73,15 +75,12 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 		return nil, err
 	}
 
-	// fmt.Println("res.ContentLength", res.ContentLength)
-
 	return &s3File{
-		s3fs:    s3fs,
-		name:    name,
-		bucket:  s3fs.bucket,
-		res:     res,
-		size:    res.ContentLength,
-		modTime: aws.ToTime(res.LastModified),
+		s3client: s3fs.s3client,
+		name:     name,
+		bucket:   s3fs.bucket,
+		size:     res.ContentLength,
+		modTime:  aws.ToTime(res.LastModified),
 	}, nil
 }
 
