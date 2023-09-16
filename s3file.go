@@ -181,7 +181,7 @@ func buildRange(offset, length int64) *string {
 	} else if length == 0 {
 		// AWS doesn't support a zero-length read; we'll read 1 byte and then
 		// ignore it in favor of http.NoBody below.
-		byteRange = aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset))
+		byteRange = aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+1))
 	} else if length >= 0 {
 		byteRange = aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
 	}
