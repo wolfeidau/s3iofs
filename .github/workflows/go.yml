@@ -44,13 +44,6 @@ jobs:
           GOFLAGS:  "-v -count=1 -json"
         run: go test $COVER_OPTS ./... | tparse -all -notests -format markdown >> $GITHUB_STEP_SUMMARY
 
-      - name: Verify git clean
-        shell: bash
-        run: |
-          if [[ -z "$(git status --porcelain)" ]]; then
-            echo "${{ github.repository }} up to date."
-          else
-            echo "${{ github.repository }} is dirty."
-            echo "::error:: $(git status)"
-            exit 1
-          fi
+      - name: Run Integration Tests
+        run: go test -v ./...
+        working-directory: integration
