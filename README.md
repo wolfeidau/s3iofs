@@ -2,11 +2,32 @@
 
 This package provides an S3 implementation for [Go1.16 filesystem interface](https://tip.golang.org/doc/go1.16#fs).
 
+# Overview
+
+This package provides an S3 implementation for the Go1.16 filesystem interface using the [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2).
+
+The `S3FS` is currently read-only, and implements the following interfaces:
+
+- `fs.FS`
+- `fs.StatFS`
+- `fs.ReadDirFS`
+
+The `s3File` implements the following interfaces:
+
+- `fs.FileInfo`
+- `fs.DirEntry`
+- `io.ReaderAt`
+- `io.Seeker`
+
+This enables libraries such as [apache arrow](https://arrow.apache.org/) to read parts of a parquet file from S3, without downloading the entire file.
 # Usage 
 
 ```go
-	// Load the Shared AWS Configuration (~/.aws/config)
-	awscfg, err := config.LoadDefaultConfig(context.TODO())
+	// Load the Shared AWS Configuration (~/.aws/config) and enable request logging
+	awscfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithClientLogMode(aws.LogRetries|aws.LogRequest),
+		config.WithLogger(logging.NewStandardLogger(os.Stdout)),
+	)
 	if err != nil {
 		// ...
 	}
@@ -29,6 +50,14 @@ This package provides an S3 implementation for [Go1.16 filesystem interface](htt
 		// ...
 	}
 ```
+
+# Integration Tests
+
+The integration tests for this package are in a separate module under the `integration`	directory, this to avoid polluting the main module with docker based testing dependencies used to run the tests locally against [minio](https://min.io/).
+
+# Links
+
+S3 implements ranges based on [HTTP Request ranges](https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests), it well worth reading up on this if your using the `io.ReadSeek` interface.
 
 # License
 

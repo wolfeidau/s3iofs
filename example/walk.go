@@ -6,15 +6,20 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go/logging"
 	"github.com/rs/zerolog/log"
 	"github.com/wolfeidau/s3iofs"
 )
 
 func main() {
-	// Load the Shared AWS Configuration (~/.aws/config)
-	awscfg, err := config.LoadDefaultConfig(context.TODO())
+	// Load the Shared AWS Configuration (~/.aws/config) and enable request logging
+	awscfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithClientLogMode(aws.LogRetries|aws.LogRequest),
+		config.WithLogger(logging.NewStandardLogger(os.Stdout)),
+	)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to load aws config")
 	}
