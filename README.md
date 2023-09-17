@@ -1,4 +1,4 @@
-# s3iofs
+# s3iofs [![Go Report Card](https://goreportcard.com/badge/github.com/wolfeidau/s3iofs)](https://goreportcard.com/report/github.com/wolfeidau/s3iofs) [![Documentation](https://godoc.org/github.com/wolfeidau/s3iofs?status.svg)](https://godoc.org/github.com/wolfeidau/s3iofs)
 
 This package provides an S3 implementation for [Go1.16 filesystem interface](https://tip.golang.org/doc/go1.16#fs).
 
