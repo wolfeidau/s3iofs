@@ -44,6 +44,9 @@ jobs:
           GOFLAGS:  "-v -count=1 -json"
         run: go test $COVER_OPTS ./... | tparse -all -notests -format markdown >> $GITHUB_STEP_SUMMARY
 
-      - name: Run Integration Tests
-        run: go test -v ./...
+      - name: Integration Test
+        env:
+          COVER_OPTS: "-coverprofile=coverage.txt -covermode=atomic -coverpkg=github.com/wolfeidau/s3iofs"
+          GOFLAGS:  "-v -count=1 -json"
+        run: go test $COVER_OPTS ./... | tparse -all -notests -format markdown >> $GITHUB_STEP_SUMMARY
         working-directory: integration
