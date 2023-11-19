@@ -79,7 +79,7 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 		s3client: s3fs.s3client,
 		name:     name,
 		bucket:   s3fs.bucket,
-		size:     res.ContentLength,
+		size:     aws.ToInt64(res.ContentLength),
 		modTime:  aws.ToTime(res.LastModified),
 	}, nil
 }
@@ -147,7 +147,7 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 		entries = append(entries, &s3File{
 			name:    file,
-			size:    obj.Size,
+			size:    aws.ToInt64(obj.Size),
 			modTime: aws.ToTime(obj.LastModified),
 		})
 	}
@@ -169,7 +169,7 @@ func (s3fs *S3FS) stat(name string) (fs.FileInfo, error) {
 		Bucket:    aws.String(s3fs.bucket),
 		Prefix:    aws.String(name),
 		Delimiter: aws.String("/"),
-		MaxKeys:   1,
+		MaxKeys:   aws.Int32(1),
 	})
 	if err != nil {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
@@ -190,7 +190,7 @@ func (s3fs *S3FS) stat(name string) (fs.FileInfo, error) {
 		return &s3File{
 			name:    name,
 			bucket:  s3fs.bucket,
-			size:    list.Contents[0].Size,
+			size:    aws.ToInt64(list.Contents[0].Size),
 			modTime: aws.ToTime(list.Contents[0].LastModified),
 		}, nil
 	}
