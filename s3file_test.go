@@ -65,7 +65,7 @@ func TestReadAt(t *testing.T) {
 						require.Equal(t, aws.String("barKey"), params.Key)
 
 						return &s3.HeadObjectOutput{
-							ContentLength: 1024,
+							ContentLength: aws.Int64(1024),
 						}, nil
 					},
 				}
