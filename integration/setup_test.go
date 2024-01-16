@@ -61,7 +61,6 @@ func TestMain(m *testing.M) {
 	endpoint = fmt.Sprintf("http://%s", resource.GetHostPort("9000/tcp"))
 
 	if err := pool.Retry(func() error {
-
 		endpointURL, err := url.Parse(endpoint)
 		if err != nil {
 			log.Fatalf("failed to parse endpoint URL: %s", err)

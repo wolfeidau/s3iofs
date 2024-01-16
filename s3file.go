@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"path"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -32,6 +34,8 @@ type s3File struct {
 	mode     fs.FileMode
 	modTime  time.Time // zero value for directories
 	offset   int64
+	mutex    sync.Mutex
+	body     io.ReadCloser
 }
 
 func (s3f *s3File) Stat() (fs.FileInfo, error) {
@@ -51,26 +55,31 @@ func (s3f *s3File) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	ctx := context.Background()
-
-	r, err := s3f.readerAt(ctx, s3f.offset, int64(len(p)))
-	if err != nil {
-		return 0, err
+	s3f.mutex.Lock()
+	defer s3f.mutex.Unlock()
+	if s3f.body != nil {
+		n, err := s3f.body.Read(p)
+		s3f.offset += int64(n) // update the current offset
+		return n, err
 	}
 
-	size, err := r.Read(p)
-	s3f.offset += int64(size)
+	// random access to S3 object is currently being used to read the file
+	n, err := s3f.ReadAt(p, s3f.offset)
+	s3f.offset += int64(n) // update the current offset
 	if err != nil {
-		if err != io.EOF {
-			return size, err
+		// if we get an unexpected EOF, and we are at the end of the underlying file, return EOF as that is
+		// the expected behavior
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			// if we are at the end of the underlying file, return EOF as that is the expected behavior
+			if s3f.offset == s3f.size {
+				return n, io.EOF
+			}
 		}
-		// check if we are at the end of the underlying file
-		if s3f.offset > s3f.size {
-			return size, err
-		}
+
+		return n, err
 	}
 
-	return size, r.Close()
+	return n, nil
 }
 
 func (s3f *s3File) ReadAt(p []byte, offset int64) (n int, err error) {
@@ -85,7 +94,7 @@ func (s3f *s3File) ReadAt(p []byte, offset int64) (n int, err error) {
 	// given we are using offsets to read this block it is constrained by size of `p`
 	size, err := io.ReadFull(r, p)
 	if err != nil {
-		if err != io.EOF {
+		if errors.Is(err, io.EOF) {
 			return size, err
 		}
 		// check if we are at the end of the underlying file
@@ -94,12 +103,22 @@ func (s3f *s3File) ReadAt(p []byte, offset int64) (n int, err error) {
 		}
 	}
 
-	// fmt.Println("offset", offset, "size", s3f.size)
-
 	return size, r.Close()
 }
 
 func (s3f *s3File) Seek(offset int64, whence int) (int64, error) {
+	// given the body stream doesn't support seek we will need to re-open the stream
+	// using read at the new offset
+	s3f.mutex.Lock()
+	defer s3f.mutex.Unlock()
+	if s3f.body != nil {
+		err := s3f.body.Close()
+		if err != nil {
+			return 0, err
+		}
+		s3f.body = nil
+	}
+
 	switch whence {
 	default:
 		return 0, &fs.PathError{Op: opSeek, Path: s3f.name, Err: fs.ErrInvalid}
@@ -136,55 +155,65 @@ func (s3f *s3File) readerAt(ctx context.Context, offset, length int64) (io.ReadC
 }
 
 func (s3f *s3File) Close() error {
+	s3f.mutex.Lock()
+	defer s3f.mutex.Unlock()
+	if s3f.body != nil {
+		err := s3f.body.Close()
+		if err != nil {
+			return err
+		}
+		s3f.body = nil
+	}
+
 	return nil
 }
 
 // Name returns the name of the file (or subdirectory) described by the entry.
 func (s3f *s3File) Name() string {
-	return s3f.name
+	return path.Base(s3f.name)
 }
 
-// Size length in bytes for regular files; system-dependent for others
+// Size length in bytes for regular files; system-dependent for others.
 func (s3f *s3File) Size() int64 {
 	return s3f.size
 }
 
-// Mode file mode bits
+// Mode file mode bits.
 func (s3f *s3File) Mode() fs.FileMode {
 	return s3f.mode
 }
 
-// file mode bits
+// file mode bits.
 func (s3f *s3File) Type() fs.FileMode {
 	return s3f.mode
 }
 
-// modification time
+// modification time.
 func (s3f *s3File) ModTime() time.Time {
 	return s3f.modTime
 }
 
-// abbreviation for Mode().IsDir()
+// abbreviation for Mode().IsDir().
 func (s3f *s3File) IsDir() bool {
 	return s3f.Mode().IsDir()
 }
 
-// underlying data source (can return nil)
+// underlying data source (can return nil).
 func (s3f *s3File) Sys() interface{} {
 	return nil
 }
 
 func buildRange(offset, length int64) *string {
-	var byteRange *string
-	if offset > 0 && length < 0 {
-		byteRange = aws.String(fmt.Sprintf("bytes=%d-", offset))
-	} else if length == 0 {
+	switch {
+	case offset > 0 && length < 0:
+		return aws.String(fmt.Sprintf("bytes=%d-", offset))
+	case length == 0:
 		// AWS doesn't support a zero-length read; we'll read 1 byte and then
 		// ignore it in favor of http.NoBody below.
-		byteRange = aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+1))
-	} else if length >= 0 {
-		byteRange = aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
+		return aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+1))
+	case length >= 0:
+		return aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
 	}
 
-	return byteRange
+	return nil
 }
