@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"io/fs"
 	"os"
 	"strconv"
 	"testing"
@@ -11,76 +12,163 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-type mockGetObjectAPI struct {
-	getObject     func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
-	listObjectsV2 func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
-	headObject    func(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+const twoMegabytes = 1024 * 1024 * 2
+
+type mockS3Client struct {
+	mock.Mock
 }
 
-func (m mockGetObjectAPI) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
-	return m.getObject(ctx, params, optFns...)
+func (m *mockS3Client) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*s3.GetObjectOutput), args.Error(1)
 }
 
-func (m mockGetObjectAPI) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
-	return m.listObjectsV2(ctx, params, optFns...)
-}
-func (m mockGetObjectAPI) HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
-	return m.headObject(ctx, params, optFns...)
+func (m *mockS3Client) HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*s3.HeadObjectOutput), args.Error(1)
 }
 
-func TestReadAt(t *testing.T) {
+func (m *mockS3Client) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*s3.ListObjectsV2Output), args.Error(1)
+}
 
+func TestReadFile(t *testing.T) {
 	type args struct {
 		bucket string
 		key    string
 	}
-
 	cases := []struct {
-		client         func(t *testing.T) mockGetObjectAPI
+		client         func(t *testing.T) S3API
 		args           args
 		expectData     []byte
 		expectedLength int
 	}{
 		{
-			client: func(t *testing.T) mockGetObjectAPI {
-				return mockGetObjectAPI{
-					getObject: func(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
-						t.Helper()
+			client: func(t *testing.T) S3API {
+				t.Helper()
+				mockClient := new(mockS3Client)
 
-						require.Equal(t, aws.String("fooBucket"), params.Bucket)
-						require.Equal(t, aws.String("barKey"), params.Key)
-						require.Equal(t, aws.String("bytes=0-1023"), params.Range)
+				mockClient.On("GetObject", mock.Anything, &s3.GetObjectInput{
+					Bucket: aws.String("fooBucket"),
+					Key:    aws.String("barKey"),
+				}, mock.Anything).Return(&s3.GetObjectOutput{
+					Body:          io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), twoMegabytes))),
+					ContentLength: aws.Int64(twoMegabytes),
+				}, nil).Once()
 
-						return &s3.GetObjectOutput{
-							Body: io.NopCloser(bytes.NewReader(make([]byte, 1024))),
-						}, nil
-					},
-					headObject: func(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
-						t.Helper()
-
-						require.Equal(t, aws.String("fooBucket"), params.Bucket)
-						require.Equal(t, aws.String("barKey"), params.Key)
-
-						return &s3.HeadObjectOutput{
-							ContentLength: aws.Int64(1024),
-						}, nil
-					},
-				}
+				return mockClient
 			},
 			args: args{
 				bucket: "fooBucket",
 				key:    "barKey",
 			},
-			expectData:     []byte("this is the body foo bar baz"),
-			expectedLength: 1024,
+			expectData:     bytes.Repeat([]byte("a"), twoMegabytes),
+			expectedLength: twoMegabytes,
 		},
 	}
 
 	for i, tt := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			assert := require.New(t)
+
+			sysfs := NewWithClient(tt.args.bucket, tt.client(t))
+
+			data, err := fs.ReadFile(sysfs, tt.args.key)
+			assert.NoError(err)
+			assert.Equal(tt.expectData, data)
+		})
+	}
+}
+
+func TestReadAt(t *testing.T) {
+	type args struct {
+		bucket string
+		key    string
+		offset int64
+	}
+
+	cases := []struct {
+		name           string
+		client         func(t *testing.T) S3API
+		args           args
+		expectData     []byte
+		expectedLength int
+	}{
+		{
+			name: "ReadAt 1024 bytes from a 1024 byte file",
+			client: func(t *testing.T) S3API {
+				t.Helper()
+
+				mockClient := new(mockS3Client)
+
+				mockClient.On("GetObject", mock.Anything, &s3.GetObjectInput{
+					Bucket: aws.String("fooBucket"),
+					Key:    aws.String("barKey"),
+				}, mock.Anything).Return(&s3.GetObjectOutput{
+					Body:          io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 1024))),
+					ContentLength: aws.Int64(1024),
+				}, nil).Once()
+
+				mockClient.On("GetObject", mock.Anything, &s3.GetObjectInput{
+					Bucket: aws.String("fooBucket"),
+					Key:    aws.String("barKey"),
+					Range:  aws.String("bytes=0-1023"),
+				}, mock.Anything).Return(&s3.GetObjectOutput{
+					Body: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 1024))),
+				}, nil).Once()
+
+				return mockClient
+			},
+			args: args{
+				bucket: "fooBucket",
+				key:    "barKey",
+				offset: 0,
+			},
+			expectData:     bytes.Repeat([]byte("a"), 1024),
+			expectedLength: 1024,
+		},
+		{
+			name: "ReadAt 1024 bytes from a 2048 byte file",
+			client: func(t *testing.T) S3API {
+				t.Helper()
+
+				mockClient := new(mockS3Client)
+
+				mockClient.On("GetObject", mock.Anything, &s3.GetObjectInput{
+					Bucket: aws.String("fooBucket"),
+					Key:    aws.String("barKey"),
+				}, mock.Anything).Return(&s3.GetObjectOutput{
+					ContentLength: aws.Int64(2048),
+					Body:          io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 1024))),
+				}, nil).Once()
+
+				mockClient.On("GetObject", mock.Anything, &s3.GetObjectInput{
+					Bucket: aws.String("fooBucket"),
+					Key:    aws.String("barKey"),
+					Range:  aws.String("bytes=1024-2047"),
+				}, mock.Anything).Return(&s3.GetObjectOutput{
+					Body: io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), 1024))),
+				}, nil).Once()
+
+				return mockClient
+			},
+			args: args{
+				bucket: "fooBucket",
+				key:    "barKey",
+				offset: 1024,
+			},
+			expectData:     bytes.Repeat([]byte("a"), 1024),
+			expectedLength: 1024,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)
 
 			sysfs := NewWithClient(tt.args.bucket, tt.client(t))
@@ -92,9 +180,10 @@ func TestReadAt(t *testing.T) {
 
 			if rc, ok := f.(io.ReaderAt); ok {
 
-				n, err := rc.ReadAt(data, 0)
+				n, err := rc.ReadAt(data, tt.args.offset)
 				assert.NoError(err)
 				assert.Equal(tt.expectedLength, n)
+				assert.Equal(tt.expectData, data)
 			}
 		})
 	}

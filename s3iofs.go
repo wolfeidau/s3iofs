@@ -45,7 +45,6 @@ func NewWithClient(bucket string, client S3API) *S3FS {
 
 // Open opens the named file.
 func (s3fs *S3FS) Open(name string) (fs.File, error) {
-
 	if !fs.ValidPath(name) {
 		return nil, &os.PathError{Op: "open", Path: name, Err: os.ErrInvalid}
 	}
@@ -59,13 +58,15 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 		}, nil
 	}
 
-	req := &s3.HeadObjectInput{
+	req := &s3.GetObjectInput{
 		Bucket: aws.String(s3fs.bucket),
 		Key:    aws.String(name),
 	}
 
-	// optimistic GetObject using name
-	res, err := s3fs.s3client.HeadObject(context.TODO(), req)
+	// optimistic GetObject, with the body setup as the default stream used for reading
+	// the goal here is to avoid subsequent get object calls triggered by small reads as observed
+	// when testing with files larger than 3-5 kilobytes
+	res, err := s3fs.s3client.GetObject(context.TODO(), req)
 	if err != nil {
 		var nfe *types.NotFound
 		if errors.As(err, &nfe) {
@@ -81,12 +82,12 @@ func (s3fs *S3FS) Open(name string) (fs.File, error) {
 		bucket:   s3fs.bucket,
 		size:     aws.ToInt64(res.ContentLength),
 		modTime:  aws.ToTime(res.LastModified),
+		body:     res.Body,
 	}, nil
 }
 
 // Stat returns a FileInfo describing the file.
 func (s3fs *S3FS) Stat(name string) (fs.FileInfo, error) {
-
 	f, err := s3fs.stat(name)
 	if err != nil {
 		return nil, &fs.PathError{
@@ -98,9 +99,8 @@ func (s3fs *S3FS) Stat(name string) (fs.FileInfo, error) {
 	return f, nil
 }
 
-// ReadDir reads the named directory
+// ReadDir reads the named directory.
 func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
-
 	f, err := s3fs.stat(name)
 	if err != nil {
 		return nil, err
@@ -156,7 +156,6 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 }
 
 func (s3fs *S3FS) stat(name string) (fs.FileInfo, error) {
-
 	if name == "." {
 		return &s3File{
 			name:   name,

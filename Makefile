@@ -15,4 +15,6 @@ test:
 	@echo "--- test all the things"
 	@go test -coverprofile=coverage.txt ./...
 	@go tool cover -func=coverage.txt
+	@cd integration; go test -coverpkg=github.com/wolfeidau/s3iofs -coverprofile=coverage.txt ./...
+	@cd integration; go tool cover -func=coverage.txt	
 .PHONY: test

@@ -2,5 +2,8 @@
     "go.testFlags": [
         "-v",
         "-coverpkg=github.com/wolfeidau/s3iofs"
-    ]
+    ],
+    "go.testEnvVars": {
+        "AWS_DEBUG": "true"
+    }
 }

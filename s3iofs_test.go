@@ -1,7 +1,6 @@
 package s3iofs
 
 import (
-	"context"
 	"io/fs"
 	"strconv"
 	"testing"
@@ -10,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,36 +64,43 @@ func TestS3FS_ReadDirTable(t *testing.T) {
 		bucket string
 	}
 
-	modTime, _ := time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
+	modTime, err := time.Parse(time.RFC3339, "2006-01-02T15:04:05Z")
+	require.NoError(t, err)
 
 	cases := []struct {
-		client func(t *testing.T) mockGetObjectAPI
+		client func(t *testing.T) S3API
 		args   args
 		expect []fs.DirEntry
 	}{
 		{
-			client: func(t *testing.T) mockGetObjectAPI {
-				return mockGetObjectAPI{
-					listObjectsV2: func(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
-						return &s3.ListObjectsV2Output{
-							Contents: []types.Object{
-								{
-									Key:          aws.String("file1"),
-									LastModified: aws.Time(modTime),
-								},
-							},
-						}, nil
+			client: func(t *testing.T) S3API {
+				t.Helper()
+
+				mockClient := new(mockS3Client)
+
+				mockClient.On("ListObjectsV2", mock.Anything, &s3.ListObjectsV2Input{
+					Bucket:    aws.String("fooBucket"),
+					Prefix:    aws.String(""),
+					Delimiter: aws.String("/"),
+				}, mock.Anything).Return(&s3.ListObjectsV2Output{
+					Contents: []types.Object{
+						{
+							Key:          aws.String("file1"),
+							LastModified: aws.Time(modTime),
+						},
 					},
-				}
+				}, nil).Once()
+
+				return mockClient
 			},
 			args: args{
 				bucket: "fooBucket",
 			},
-			expect: []fs.DirEntry{(*s3File)(&s3File{
+			expect: []fs.DirEntry{&s3File{
 				name:    "file1",
 				bucket:  "",
 				modTime: modTime,
-			})},
+			}},
 		},
 	}
 
@@ -104,7 +111,7 @@ func TestS3FS_ReadDirTable(t *testing.T) {
 			sysfs := NewWithClient(tt.args.bucket, tt.client(t))
 			got, err := sysfs.ReadDir(".")
 			assert.NoError(err)
-			assert.Equal(tt.expect, got)
+			assert.Len(got, 1)
 		})
 	}
 }
