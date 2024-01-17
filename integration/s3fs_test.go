@@ -94,6 +94,8 @@ func TestSeek(t *testing.T) {
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
 
 	t.Run("seek to start", func(t *testing.T) {
+		assert := require.New(t)
+
 		f, err := s3fs.Open("test_seek.txt")
 		assert.NoError(err)
 
@@ -112,6 +114,8 @@ func TestSeek(t *testing.T) {
 	})
 
 	t.Run("seek to end", func(t *testing.T) {
+		assert := require.New(t)
+
 		f, err := s3fs.Open("test_seek.txt")
 		assert.NoError(err)
 		defer f.Close()
@@ -124,6 +128,8 @@ func TestSeek(t *testing.T) {
 	})
 
 	t.Run("seek to current", func(t *testing.T) {
+		assert := require.New(t)
+
 		f, err := s3fs.Open("test_seek.txt")
 		assert.NoError(err)
 		defer f.Close()
@@ -239,17 +245,47 @@ func TestReadBigEOF(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
-	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_remove.txt"),
-		Body:   bytes.NewReader(generateData(oneMegabyte)),
+	t.Run("create and remove", func(t *testing.T) {
+		assert := require.New(t)
+
+		_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
+			Bucket: aws.String(testBucketName),
+			Key:    aws.String("test_remove.txt"),
+			Body:   bytes.NewReader(generateData(oneMegabyte)),
+		})
+		assert.NoError(err)
+
+		s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+		err = s3fs.Remove("test_remove.txt")
+		assert.NoError(err)
 	})
-	assert.NoError(err)
 
-	s3fs := s3iofs.NewWithClient(testBucketName, client)
+	t.Run("removing non existent file should not error", func(t *testing.T) {
+		assert := require.New(t)
 
-	err = s3fs.Remove("test_remove.txt")
-	assert.NoError(err)
+		s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+		err := s3fs.Remove("test_remove_not_exists.txt")
+		assert.NoError(err)
+	})
+
+	t.Run("bad bucket name should error", func(t *testing.T) {
+		assert := require.New(t)
+
+		s3fs := s3iofs.NewWithClient("badbucket", client)
+
+		err := s3fs.Remove("test_remove_not_exists.txt")
+		assert.Error(err)
+	})
+
+	t.Run("invalid name should error", func(t *testing.T) {
+		assert := require.New(t)
+
+		s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+		err := s3fs.Remove("")
+		assert.Error(err)
+	})
 }

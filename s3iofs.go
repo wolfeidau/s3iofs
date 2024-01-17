@@ -175,12 +175,6 @@ func (s3fs *S3FS) Remove(name string) error {
 		Key:    aws.String(name),
 	})
 	if err != nil {
-		var nfe *types.NotFound
-		if errors.As(err, &nfe) {
-			// deleting a file which doesn't exist is not an error
-			return nil
-		}
-
 		return &fs.PathError{Op: "remove", Path: name, Err: err}
 	}
 
