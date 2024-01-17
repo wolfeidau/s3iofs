@@ -1,6 +1,7 @@
 package s3iofs
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -17,12 +18,19 @@ var (
 	_ fs.StatFS    = (*S3FS)(nil)
 	_ fs.ReadDirFS = (*S3FS)(nil)
 	_ RemoveFS     = (*S3FS)(nil)
+	_ WriteFileFS  = (*S3FS)(nil)
 )
 
 // RemoveFS extend the fs.FS interface to add the Remove method.
 type RemoveFS interface {
 	fs.FS
 	Remove(name string) error
+}
+
+// WriteFileFS extend the fs.FS interface to add the WriteFile method.
+type WriteFileFS interface {
+	fs.FS
+	WriteFile(name string, data []byte, perm os.FileMode) error
 }
 
 // S3FS is a filesystem implementation using S3.
@@ -162,6 +170,9 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return entries, nil
 }
 
+// Remove removes the named file or directory.
+//
+// Note if the file doesn't exist in the s3 bucket, Remove returns nil.
 func (s3fs *S3FS) Remove(name string) error {
 	if name == "." {
 		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrInvalid}
@@ -176,6 +187,32 @@ func (s3fs *S3FS) Remove(name string) error {
 	})
 	if err != nil {
 		return &fs.PathError{Op: "remove", Path: name, Err: err}
+	}
+
+	return nil
+}
+
+// WriteFile writes the data to the named file in s3.
+//
+// Note:
+//   - If the file exists, WriteFile overwrites it.
+//   - The provided mode is unused by this implementation.
+func (s3fs *S3FS) WriteFile(name string, data []byte, perm os.FileMode) error {
+	if name == "." {
+		return &fs.PathError{Op: "write", Path: name, Err: fs.ErrInvalid}
+	}
+	if name == "" {
+		return &fs.PathError{Op: "write", Path: name, Err: fs.ErrInvalid}
+	}
+
+	_, err := s3fs.s3client.PutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(s3fs.bucket),
+		Key:    aws.String(name),
+		Body:   bytes.NewReader(data),
+	})
+
+	if err != nil {
+		return &fs.PathError{Op: "write", Path: name, Err: err}
 	}
 
 	return nil
