@@ -16,7 +16,14 @@ var (
 	_ fs.FS        = (*S3FS)(nil)
 	_ fs.StatFS    = (*S3FS)(nil)
 	_ fs.ReadDirFS = (*S3FS)(nil)
+	_ RemoveFS     = (*S3FS)(nil)
 )
+
+// RemoveFS extend the fs.FS interface to add the Remove method.
+type RemoveFS interface {
+	fs.FS
+	Remove(name string) error
+}
 
 // S3FS is a filesystem implementation using S3.
 type S3FS struct {
@@ -153,6 +160,31 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	}
 
 	return entries, nil
+}
+
+func (s3fs *S3FS) Remove(name string) error {
+	if name == "." {
+		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrInvalid}
+	}
+	if name == "" {
+		return &fs.PathError{Op: "remove", Path: name, Err: fs.ErrInvalid}
+	}
+
+	_, err := s3fs.s3client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+		Bucket: aws.String(s3fs.bucket),
+		Key:    aws.String(name),
+	})
+	if err != nil {
+		var nfe *types.NotFound
+		if errors.As(err, &nfe) {
+			// deleting a file which doesn't exist is not an error
+			return nil
+		}
+
+		return &fs.PathError{Op: "remove", Path: name, Err: err}
+	}
+
+	return nil
 }
 
 func (s3fs *S3FS) stat(name string) (fs.FileInfo, error) {

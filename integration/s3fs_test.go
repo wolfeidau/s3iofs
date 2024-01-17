@@ -237,3 +237,19 @@ func TestReadBigEOF(t *testing.T) {
 	assert.ErrorIs(err, io.ErrUnexpectedEOF)
 	assert.Equal(oneMegabyte, n)
 }
+
+func TestRemove(t *testing.T) {
+	assert := require.New(t)
+
+	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: aws.String(testBucketName),
+		Key:    aws.String("test_remove.txt"),
+		Body:   bytes.NewReader(generateData(oneMegabyte)),
+	})
+	assert.NoError(err)
+
+	s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+	err = s3fs.Remove("test_remove.txt")
+	assert.NoError(err)
+}

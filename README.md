@@ -6,7 +6,7 @@ This package provides an S3 implementation for [Go1.16 filesystem interface](htt
 
 This package provides an S3 implementation for the Go1.16 filesystem interface using the [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2).
 
-The `S3FS` is currently read-only, and implements the following interfaces:
+The `S3FS` implements the following interfaces:
 
 - `fs.FS`
 - `fs.StatFS`
@@ -18,6 +18,10 @@ The `s3File` implements the following interfaces:
 - `fs.DirEntry`
 - `io.ReaderAt`
 - `io.Seeker`
+
+In addition to this the `S3FS` also implements the following interfaces:
+
+- `RemoveFS`, which provides a `Remove(name string) error` method.
 
 This enables libraries such as [apache arrow](https://arrow.apache.org/) to read parts of a parquet file from S3, without downloading the entire file.
 # Usage 
