@@ -42,6 +42,11 @@ func (m *mockS3Client) DeleteObject(ctx context.Context, params *s3.DeleteObject
 	return args.Get(0).(*s3.DeleteObjectOutput), args.Error(1)
 }
 
+func (m *mockS3Client) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	args := m.Called(ctx, params, optFns)
+	return args.Get(0).(*s3.PutObjectOutput), args.Error(1)
+}
+
 func TestReadFile(t *testing.T) {
 	type args struct {
 		bucket string

@@ -289,3 +289,28 @@ func TestRemove(t *testing.T) {
 		assert.Error(err)
 	})
 }
+
+func TestWriteFile(t *testing.T) {
+
+	t.Run("should write and read file", func(t *testing.T) {
+		assert := require.New(t)
+
+		s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+		err := s3fs.WriteFile("test_write_read.txt", oneKilobyte, 0644)
+		assert.NoError(err)
+
+		data, err := fs.ReadFile(s3fs, "test_write_read.txt")
+		assert.NoError(err)
+		assert.Equal(oneKilobyte, data)
+	})
+
+	t.Run("invalid name should error", func(t *testing.T) {
+		assert := require.New(t)
+
+		s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+		err := s3fs.WriteFile("", []byte{}, 0644)
+		assert.Error(err)
+	})
+}
