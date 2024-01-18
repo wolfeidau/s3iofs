@@ -69,11 +69,12 @@ func TestMain(m *testing.M) {
 		var logmode aws.ClientLogMode
 
 		if os.Getenv("AWS_DEBUG") != "" {
-			logmode = aws.LogRetries | aws.LogRequest
+			logmode = aws.LogRetries | aws.LogRequest | aws.LogResponse
 		}
 
 		client = s3.New(s3.Options{
 			ClientLogMode:      logmode,
+			UsePathStyle:       true,
 			Logger:             logging.NewStandardLogger(os.Stdout),
 			EndpointResolverV2: &Resolver{URL: endpointURL},
 			Credentials: aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {

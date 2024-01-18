@@ -16,6 +16,7 @@ The `s3File` implements the following interfaces:
 
 - `fs.FileInfo`
 - `fs.DirEntry`
+- `fs.ReadDirFile`
 - `io.ReaderAt`
 - `io.Seeker`
 
@@ -24,7 +25,8 @@ In addition to this the `S3FS` also implements the following interfaces:
 - `RemoveFS`, which provides a `Remove(name string) error` method.
 - `WriteFileFS` which provides a `WriteFile(name string, data []byte, perm fs.FileMode) error` method.
 
-This enables libraries such as [apache arrow](https://arrow.apache.org/) to read parts of a parquet file from S3, without downloading the entire file.
+The `Seek` and `ReadAt` operations enable libraries such as [apache arrow](https://arrow.apache.org/) to read parts of a parquet file from S3, without downloading the entire file.
+
 # Usage 
 
 ```go

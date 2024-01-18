@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	_ fs.FileInfo = (*s3File)(nil)
-	_ fs.DirEntry = (*s3File)(nil)
-	_ io.ReaderAt = (*s3File)(nil)
-	_ io.Seeker   = (*s3File)(nil)
+	_ fs.FileInfo    = (*s3File)(nil)
+	_ fs.DirEntry    = (*s3File)(nil)
+	_ io.ReaderAt    = (*s3File)(nil)
+	_ io.Seeker      = (*s3File)(nil)
+	_ fs.ReadDirFile = (*s3File)(nil)
 )
 
 const (
@@ -27,15 +28,16 @@ const (
 )
 
 type s3File struct {
-	s3client S3API
-	name     string
-	bucket   string
-	size     int64
-	mode     fs.FileMode
-	modTime  time.Time // zero value for directories
-	offset   int64
-	mutex    sync.Mutex
-	body     io.ReadCloser
+	s3client     S3API
+	name         string
+	bucket       string
+	size         int64
+	mode         fs.FileMode
+	modTime      time.Time // zero value for directories
+	offset       int64
+	lastDirEntry string
+	mutex        sync.Mutex
+	body         io.ReadCloser
 }
 
 func (s3f *s3File) Stat() (fs.FileInfo, error) {
@@ -135,6 +137,55 @@ func (s3f *s3File) Seek(offset int64, whence int) (int64, error) {
 	s3f.offset = offset
 
 	return offset, nil
+}
+
+func (s3f *s3File) ReadDir(n int) ([]fs.DirEntry, error) {
+	if !s3f.IsDir() {
+		return nil, &fs.PathError{Op: opRead, Path: s3f.Name(), Err: fs.ErrNotExist}
+	}
+
+	prefix := s3f.name
+
+	if s3f.name == "." {
+		prefix = ""
+	}
+
+	params := &s3.ListObjectsV2Input{
+		Bucket:    aws.String(s3f.bucket),
+		Prefix:    aws.String(prefix),
+		Delimiter: aws.String("/"),
+	}
+
+	if n > 0 {
+		params.MaxKeys = aws.Int32(int32(n))
+	}
+
+	if s3f.lastDirEntry != "" {
+		params.StartAfter = aws.String(s3f.lastDirEntry)
+	}
+
+	listRes, err := s3f.s3client.ListObjectsV2(context.Background(), params)
+	if err != nil {
+		return nil, err
+	}
+
+	entries, err := listResToEntries(s3f.bucket, s3f.s3client, listRes)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(entries) == 0 {
+		return nil, io.EOF
+	}
+
+	if n > 0 && len(entries) == n {
+		des3f, ok := entries[n-1].(*s3File)
+		if ok {
+			s3f.lastDirEntry = des3f.name
+		}
+	}
+
+	return entries, nil
 }
 
 func (s3f *s3File) readerAt(ctx context.Context, offset, length int64) (io.ReadCloser, error) {

@@ -26,14 +26,19 @@ func generateData(length int) []byte {
 	return bytes.Repeat([]byte("a"), length)
 }
 
+func writeTestFile(path string, body []byte) error {
+	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
+		Bucket: aws.String(testBucketName),
+		Key:    aws.String(path),
+		Body:   bytes.NewReader(body),
+	})
+	return err
+}
+
 func TestList(t *testing.T) {
 	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_list/test.txt"),
-		Body:   bytes.NewReader(oneKilobyte),
-	})
+	err := writeTestFile("test_list/test.txt", oneKilobyte)
 	assert.NoError(err)
 
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
@@ -61,11 +66,7 @@ func TestOpen(t *testing.T) {
 func TestStat(t *testing.T) {
 	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_stat.txt"),
-		Body:   bytes.NewReader(oneKilobyte),
-	})
+	err := writeTestFile("test_stat.txt", oneKilobyte)
 	assert.NoError(err)
 
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
@@ -84,11 +85,7 @@ func TestStat(t *testing.T) {
 func TestSeek(t *testing.T) {
 	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_seek.txt"),
-		Body:   bytes.NewReader(oneKilobyte),
-	})
+	err := writeTestFile("test_seek.txt", oneKilobyte)
 	assert.NoError(err)
 
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
@@ -149,11 +146,7 @@ func TestSeek(t *testing.T) {
 func TestReaderAt(t *testing.T) {
 	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_reader_at.txt"),
-		Body:   bytes.NewReader(oneKilobyte),
-	})
+	err := writeTestFile("test_reader_at.txt", oneKilobyte)
 	assert.NoError(err)
 
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
@@ -179,11 +172,7 @@ func TestReaderAt(t *testing.T) {
 func TestReaderAtBig(t *testing.T) {
 	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_reader_at_big.txt"),
-		Body:   bytes.NewReader(generateData(threeMegabytes)),
-	})
+	err := writeTestFile("test_reader_at_big.txt", generateData(threeMegabytes))
 	assert.NoError(err)
 
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
@@ -208,16 +197,12 @@ func TestReaderAtBig(t *testing.T) {
 func TestReadFile(t *testing.T) {
 	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_read_big.txt"),
-		Body:   bytes.NewReader(generateData(threeMegabytes)),
-	})
+	err := writeTestFile("test_read_file.txt", generateData(threeMegabytes))
 	assert.NoError(err)
 
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
 
-	data, err := fs.ReadFile(s3fs, "test_read_big.txt")
+	data, err := fs.ReadFile(s3fs, "test_read_file.txt")
 	assert.NoError(err)
 	assert.Len(data, threeMegabytes)
 }
@@ -225,11 +210,7 @@ func TestReadFile(t *testing.T) {
 func TestReadBigEOF(t *testing.T) {
 	assert := require.New(t)
 
-	_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-		Bucket: aws.String(testBucketName),
-		Key:    aws.String("test_read_big_eof.txt"),
-		Body:   bytes.NewReader(generateData(oneMegabyte)),
-	})
+	err := writeTestFile("test_read_big_eof.txt", generateData(oneMegabyte))
 	assert.NoError(err)
 
 	s3fs := s3iofs.NewWithClient(testBucketName, client)
@@ -249,11 +230,7 @@ func TestRemove(t *testing.T) {
 	t.Run("create and remove", func(t *testing.T) {
 		assert := require.New(t)
 
-		_, err := client.PutObject(context.Background(), &s3.PutObjectInput{
-			Bucket: aws.String(testBucketName),
-			Key:    aws.String("test_remove.txt"),
-			Body:   bytes.NewReader(generateData(oneMegabyte)),
-		})
+		err := writeTestFile("test_remove.txt", generateData(oneMegabyte))
 		assert.NoError(err)
 
 		s3fs := s3iofs.NewWithClient(testBucketName, client)
@@ -313,4 +290,66 @@ func TestWriteFile(t *testing.T) {
 		err := s3fs.WriteFile("", []byte{}, 0644)
 		assert.Error(err)
 	})
+}
+
+func TestReadDir(t *testing.T) {
+	assert := require.New(t)
+
+	err := writeTestFile("test_read_dir/one/day/test_read_dir.txt", oneKilobyte)
+	assert.NoError(err)
+
+	err = writeTestFile("test_read_dir/one/week/test_read_dir.txt", oneKilobyte)
+	assert.NoError(err)
+
+	err = writeTestFile("test_read_dir/two/day/test_read_dir.txt", oneKilobyte)
+	assert.NoError(err)
+
+	s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+	entries, err := s3fs.ReadDir("test_read_dir")
+	assert.NoError(err)
+	assert.Len(entries, 2)
+	assert.ElementsMatch([]string{"one", "two"}, getNames(entries))
+	assert.True(entries[0].IsDir())
+}
+
+func TestFileReadDir(t *testing.T) {
+	assert := require.New(t)
+
+	err := writeTestFile("test_file_read_dir/one/test_file_read_dir_1.txt", oneKilobyte)
+	assert.NoError(err)
+
+	err = writeTestFile("test_file_read_dir/one/test_file_read_dir_2.txt", oneKilobyte)
+	assert.NoError(err)
+
+	s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+	entries, err := s3fs.ReadDir("test_file_read_dir")
+	assert.NoError(err)
+
+	dirLs, ok := entries[0].(fs.ReadDirFile)
+	assert.True(ok)
+	assert.Equal("one", entries[0].Name())
+	assert.True(entries[0].IsDir())
+
+	entries, err = dirLs.ReadDir(1)
+	assert.NoError(err)
+	assert.Len(entries, 1)
+	assert.Equal("test_file_read_dir_1.txt", entries[0].Name())
+
+	entries, err = dirLs.ReadDir(1)
+	assert.NoError(err)
+	assert.Len(entries, 1)
+	assert.Equal("test_file_read_dir_2.txt", entries[0].Name())
+
+	_, err = dirLs.ReadDir(1)
+	assert.Equal(io.EOF, err)
+}
+
+func getNames(entries []fs.DirEntry) []string {
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = entry.Name()
+	}
+	return names
 }

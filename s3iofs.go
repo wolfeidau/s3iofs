@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"io/fs"
+	"net/url"
 	"os"
-	"path"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -125,13 +125,16 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		return nil, &fs.PathError{Op: opRead, Path: name, Err: fs.ErrNotExist}
 	}
 
-	prefix := name + "/"
+	prefix, err := url.JoinPath(name, "/")
+	if err != nil {
+		return nil, err
+	}
 
 	if name == "." {
 		prefix = ""
 	}
 
-	list, err := s3fs.s3client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+	listRes, err := s3fs.s3client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
 		Bucket:    aws.String(s3fs.bucket),
 		Prefix:    aws.String(prefix),
 		Delimiter: aws.String("/"),
@@ -140,34 +143,7 @@ func (s3fs *S3FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		return nil, err
 	}
 
-	entries := []fs.DirEntry{}
-
-	// common prefixes are directories
-	for _, commonPrefix := range list.CommonPrefixes {
-
-		prefix := aws.ToString(commonPrefix.Prefix)
-
-		dir := path.Base(prefix)
-
-		entries = append(entries, &s3File{
-			name:   dir,
-			bucket: s3fs.bucket,
-			mode:   fs.ModeDir,
-		})
-	}
-
-	// contents are files
-	for _, obj := range list.Contents {
-		_, file := path.Split(aws.ToString(obj.Key))
-
-		entries = append(entries, &s3File{
-			name:    file,
-			size:    aws.ToInt64(obj.Size),
-			modTime: aws.ToTime(obj.LastModified),
-		})
-	}
-
-	return entries, nil
+	return listResToEntries(s3fs.bucket, s3fs.s3client, listRes)
 }
 
 // Remove removes the named file or directory.
@@ -271,4 +247,38 @@ func (s3fs *S3FS) openDirectory(name string) (fs.File, error) {
 	}
 
 	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
+}
+
+func listResToEntries(bucket string, s3client S3API, listRes *s3.ListObjectsV2Output) ([]fs.DirEntry, error) {
+	entries := []fs.DirEntry{}
+
+	// common prefixes are directories
+	for _, commonPrefix := range listRes.CommonPrefixes {
+
+		prefix := aws.ToString(commonPrefix.Prefix)
+
+		// dir := path.Base(prefix)
+
+		entries = append(entries, &s3File{
+			s3client: s3client,
+			name:     prefix,
+			bucket:   bucket,
+			mode:     fs.ModeDir,
+		})
+	}
+
+	// contents are files
+	for _, obj := range listRes.Contents {
+		// _, file := path.Split(aws.ToString(obj.Key))
+
+		entries = append(entries, &s3File{
+			s3client: s3client,
+			name:     aws.ToString(obj.Key),
+			bucket:   bucket,
+			size:     aws.ToInt64(obj.Size),
+			modTime:  aws.ToTime(obj.LastModified),
+		})
+	}
+
+	return entries, nil
 }
