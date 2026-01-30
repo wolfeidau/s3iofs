@@ -186,7 +186,6 @@ func (s3fs *S3FS) WriteFile(name string, data []byte, perm os.FileMode) error {
 		Key:    aws.String(name),
 		Body:   bytes.NewReader(data),
 	})
-
 	if err != nil {
 		return &fs.PathError{Op: "write", Path: name, Err: err}
 	}
@@ -207,30 +206,30 @@ func (s3fs *S3FS) stat(name string) (fs.FileInfo, error) {
 		Bucket:    aws.String(s3fs.bucket),
 		Prefix:    aws.String(name),
 		Delimiter: aws.String("/"),
-		MaxKeys:   aws.Int32(1),
 	})
 	if err != nil {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
 
-	if len(list.CommonPrefixes) > 0 &&
-		aws.ToString(list.CommonPrefixes[0].Prefix) == name+"/" {
-
-		return &s3File{
-			name:   name,
-			bucket: s3fs.bucket,
-			mode:   fs.ModeDir,
-		}, nil
+	for _, commonPrefix := range list.CommonPrefixes {
+		if aws.ToString(commonPrefix.Prefix) == name+"/" {
+			return &s3File{
+				name:   name,
+				bucket: s3fs.bucket,
+				mode:   fs.ModeDir,
+			}, nil
+		}
 	}
 
-	if len(list.Contents) > 0 &&
-		aws.ToString(list.Contents[0].Key) == name {
-		return &s3File{
-			name:    name,
-			bucket:  s3fs.bucket,
-			size:    aws.ToInt64(list.Contents[0].Size),
-			modTime: aws.ToTime(list.Contents[0].LastModified),
-		}, nil
+	for _, content := range list.Contents {
+		if aws.ToString(content.Key) == name {
+			return &s3File{
+				name:    name,
+				bucket:  s3fs.bucket,
+				size:    aws.ToInt64(content.Size),
+				modTime: aws.ToTime(content.LastModified),
+			}, nil
+		}
 	}
 
 	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
