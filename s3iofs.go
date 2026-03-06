@@ -203,33 +203,35 @@ func (s3fs *S3FS) stat(name string) (fs.FileInfo, error) {
 		}, nil
 	}
 
+	// Check if an exact key exists for this name (file case).
+	head, err := s3fs.s3client.HeadObject(context.TODO(), &s3.HeadObjectInput{
+		Bucket: aws.String(s3fs.bucket),
+		Key:    aws.String(name),
+	})
+	if err == nil {
+		return &s3File{
+			name:    name,
+			bucket:  s3fs.bucket,
+			size:    aws.ToInt64(head.ContentLength),
+			modTime: aws.ToTime(head.LastModified),
+		}, nil
+	}
+
+	// Check if a directory prefix exists for this name.
 	list, err := s3fs.s3client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
 		Bucket:    aws.String(s3fs.bucket),
-		Prefix:    aws.String(name),
-		Delimiter: aws.String("/"),
+		Prefix:    aws.String(name + "/"),
 		MaxKeys:   aws.Int32(1),
 	})
 	if err != nil {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 	}
 
-	if len(list.CommonPrefixes) > 0 &&
-		aws.ToString(list.CommonPrefixes[0].Prefix) == name+"/" {
-
+	if len(list.Contents) > 0 || len(list.CommonPrefixes) > 0 {
 		return &s3File{
 			name:   name,
 			bucket: s3fs.bucket,
 			mode:   fs.ModeDir,
-		}, nil
-	}
-
-	if len(list.Contents) > 0 &&
-		aws.ToString(list.Contents[0].Key) == name {
-		return &s3File{
-			name:    name,
-			bucket:  s3fs.bucket,
-			size:    aws.ToInt64(list.Contents[0].Size),
-			modTime: aws.ToTime(list.Contents[0].LastModified),
 		}, nil
 	}
 

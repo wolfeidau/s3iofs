@@ -3,6 +3,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"testing"
@@ -80,6 +81,26 @@ func TestStat(t *testing.T) {
 	assert.True(finfo.Mode().IsRegular())
 	assert.Equal(fs.FileMode(0x0), finfo.Mode().Perm())
 	assert.WithinDuration(time.Now(), finfo.ModTime(), 5*time.Second)
+}
+
+func TestStatDirectory(t *testing.T) {
+	assert := require.New(t)
+
+	// Write a sibling key that sorts before "test_stat_dir/" alphabetically.
+	// With MaxKeys=1 this causes the old code to see "test_stat_dir-sibling"
+	// in Contents and miss the "test_stat_dir/" CommonPrefix entirely.
+	err := writeTestFile("test_stat_dir-sibling", oneKilobyte)
+	assert.NoError(err)
+
+	err = writeTestFile("test_stat_dir/file.txt", oneKilobyte)
+	assert.NoError(err)
+
+	s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+	finfo, err := s3fs.Stat("test_stat_dir")
+	assert.NoError(err)
+	assert.Equal("test_stat_dir", finfo.Name())
+	assert.True(finfo.IsDir())
 }
 
 func TestSeek(t *testing.T) {
@@ -290,6 +311,33 @@ func TestWriteFile(t *testing.T) {
 		err := s3fs.WriteFile("", []byte{}, 0644)
 		assert.Error(err)
 	})
+}
+
+// TestStatDirectoryWithManyPrefixSiblings demonstrates a pagination edge case.
+// If more than 1000 keys share the same prefix and sort before the target
+// directory (e.g. "test_stat_dir_many-0001" ... "test_stat_dir_many-1000" all
+// before "test_stat_dir_many/"), a ListObjectsV2 call using
+// Prefix:"test_stat_dir_many" with no MaxKeys will only see those sibling keys
+// on the first page and miss the "test_stat_dir_many/" CommonPrefix entirely,
+// returning ErrNotExist for a directory that actually exists.
+func TestStatDirectoryWithManyPrefixSiblings(t *testing.T) {
+	assert := require.New(t)
+
+	// Write 1000 sibling keys that sort before "test_stat_dir_many/" alphabetically.
+	for i := range 1000 {
+		err := writeTestFile(fmt.Sprintf("test_stat_dir_many-%04d", i), []byte("x"))
+		assert.NoError(err)
+	}
+
+	err := writeTestFile("test_stat_dir_many/file.txt", oneKilobyte)
+	assert.NoError(err)
+
+	s3fs := s3iofs.NewWithClient(testBucketName, client)
+
+	finfo, err := s3fs.Stat("test_stat_dir_many")
+	assert.NoError(err)
+	assert.Equal("test_stat_dir_many", finfo.Name())
+	assert.True(finfo.IsDir())
 }
 
 func TestReadDir(t *testing.T) {
