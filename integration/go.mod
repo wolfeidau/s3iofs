@@ -1,6 +1,6 @@
 module github.com/wolfeidau/s3iofs/integration
 
-go 1.24.0
+go 1.24
 
 toolchain go1.24.2
 
