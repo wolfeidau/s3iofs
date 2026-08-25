@@ -1,0 +1,6 @@
+steps:
+  - label: ":github: Test"
+    key: "gha-ci"
+    plugins:
+      - github-actions#aca805f6eb2965201d4edaa57f3eec8ef9ea7ccb:
+          workflow: .github/workflows/go.yml
